@@ -1,8 +1,6 @@
 from PIL import Image
 import numpy as np
 
-#LOCATION = "/storage/emulated/0/Download/"
-#file_name = "fubuki_sit.png"
 
 quantize_b = 0
 quantize_a = 0
@@ -77,6 +75,7 @@ def gen_art(img: Image.Image, sensetivity:int=16, scale:float=1.0):
     diff_img /= diff_img.max()
     diff_img *= 255
     
+    
     s = sensetivity
     diff_img[diff_img < s] = 0
     diff_img[diff_img >= s] = 255
@@ -98,7 +97,7 @@ def gen_art(img: Image.Image, sensetivity:int=16, scale:float=1.0):
         (0,2-result.shape[1]%2)))
         
     codes = []
-    for l in range(0, result.shape[1], 4):
+    for l in range(0, result.shape[0], 4):
         codes.append(np.array([
             result[l + 0, 0::2], result[l + 0, 1::2],
             result[l + 1, 0::2], result[l + 1, 1::2],
@@ -112,7 +111,7 @@ def gen_art(img: Image.Image, sensetivity:int=16, scale:float=1.0):
         for cell in row:
             buffer.append(get_brail(cell.astype(bool)))
         buffer.append('<br>')
-    
+        
     buffer = ''.join(buffer)
     style_td = ''.join((
         "vertical-align: middle;",
@@ -156,12 +155,14 @@ def gen_art(img: Image.Image, sensetivity:int=16, scale:float=1.0):
 #gen_art(img_, sensetivity_, scale_)
 
 from aiohttp import web
+import random
 
 async def generate_html(img, a, b):
   html_content = gen_art(img, a, b)  # Call your existing function
   return html_content
 
 routes = web.RouteTableDef()
+
 
 @routes.get('/')
 async def home(_):
@@ -180,12 +181,12 @@ async def home(_):
         "    </head>",
         "    <body>",
         "        <h1>Enter Information</h1>",
-        "        <form action=\"/result\" method=\"post\" enctype=\"multipart/form-data\">",
-        "            <label for=\"sens\">Sensetivity:</label>",
+        "        <form action=\"/generate\" method=\"post\" enctype=\"multipart/form-data\">",
+        "            <label for=\"sens\">Throughput(0-255):</label>",
         "            <input type=\"number\" id=\"sens\" name=\"sens\" required><br><br>",
-        "            <label for=\"scale\">Scale:</label>",
+        "            <label for=\"scale\">Scale (%):</label>",
         "            <input type=\"number\" id=\"scale\" name=\"scale\" required><br><br>",
-        "            <label for=\"file_upload\">Image Upload:</label>",
+        "            <label for=\"file_upload\">Image Upload(<50MB):</label>",
         "            <input type=\"file\" id=\"file_upload\" name=\"file_upload\" required><br><br>",
         "            <button type=\"submit\">Send Data</button>",
         "        </form>",
@@ -194,15 +195,55 @@ async def home(_):
     ))
     return web.Response(body=return_, content_type="text/html")
 
-@routes.post('/result')
+processing = {}
+
+@routes.get('/result')
+async def result(request):
+    id_ = request.query.get("id_")
+    if id_ not in processing:
+        return_ = "<a href=\"/\">Sorry, no such id, return</a>"
+    else:
+        return_ = await processing[id_]
+        del processing[id_]
+    return web.Response(body=return_, content_type="text/html")
+
+@routes.post('/generate')
 async def generate(request):
     data = await request.post()
     a = int(data["sens"]) % 256
-    b = float(data["scale"])
+    b = int(data["scale"])/100
     img = Image.open(data["file_upload"].file)
-    return_ = await generate_html(img, a, b)
+    eta = int(img.width * img.height / 2.8e5)
+    if len(processing)>5:
+        return_ = "<a href=\"/\">Sorry, we are busy, return</a>"
+    else:
+        id_ = str(random.randint(0,1000))
+        while id_ in processing.keys():
+            id_ = str(random.randint(0,1000))
+        
+        processing[id_] = generate_html(img, a, b)
+        redir = "/result?id_="+id_
+    
+        return_ = '\n'.join((
+            "<!DOCTYPE html>",
+            "<html>",
+            "    <head>",
+           f"        <meta http-equiv=\"refresh\" content=\"1;url={redir}\">",
+            "        <title>redirecting...</title>",
+            "    </head>",
+            "    <body>",
+            "        <p>Image is generating</p>",
+            "        <p>ETA: <span id=\"eta\"></span> seconds</p>",
+            "        <script>",
+           f"            var timeLeft = {eta};",
+            "            const etaElement = document.getElementById(\"eta\");",
+            "            setInterval(() => {etaElement.textContent = timeLeft; timeLeft--;}, 1000);",
+            "        </script>",
+            "    </body>",
+            "</html>",
+        ))
     return web.Response(body=return_, content_type="text/html")
 
-app = web.Application()
+app = web.Application(client_max_size=51*1024*1024)
 app.add_routes(routes)
 web.run_app(app)
