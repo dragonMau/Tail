@@ -1,8 +1,8 @@
 from PIL import Image
 import numpy as np
 
-LOCATION = "/storage/emulated/0/Download/"
-file_name = "fubuki_sit.png"
+#LOCATION = "/storage/emulated/0/Download/"
+#file_name = "fubuki_sit.png"
 
 quantize_b = 0
 quantize_a = 0
@@ -19,7 +19,7 @@ play_ = [
     (0, 8)
 ]*0
 
-img_ = Image.open(LOCATION+file_name)
+#img_ = Image.open(LOCATION+file_name)
 
 
 #def get_dif(img_b):
